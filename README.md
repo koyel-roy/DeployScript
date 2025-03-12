@@ -1,14 +1,9 @@
-1. postgres password authentication through command line (this was done manually)
-2. priveles for postgres username with postgres as pasword with supervisor priviledge was also given
-manually. 
-3. backup for postgres criteria was also done manually. 
-4. in each gwservice class we need to also mention the correct credentials.json file for where it is present. 
-else will throw an file not found error. 
-5.In the ui project we need to go to the route.js file and mention the host or server that we currently are on. (this needs to be done manually).
-6. also we have to check if the backend port is blocked by the firewall, if it is then we need to change
-the rules and allow the particular port. 
-7. to start the backend we currently run this sudo java -jar /opt/DataModelAPI/data-model-api-0.0.1-SNAPSHOT.jar,
-fo. 
+This project requires some manual configuration steps to ensure proper setup and smooth execution:
 
-8. Make sure that in the application.properties file has the updated postgres and mongo connection url, username
-and password. Mentioning localhosted databases can also work but the password authentication must be there.
+Postgres Authentication – Configure password authentication for the postgres user using the command line.
+Grant Privileges – Assign superuser privileges to the postgres user.
+Backup Setup – Create a backup strategy for the Postgres database.
+Set credentials.json Path – Ensure the correct path to credentials.json is configured in each GWService class.
+Update UI Host – Modify route.js in the UI project to point to the correct server/host.
+Firewall Configuration – Check if the backend port (e.g., 8081) is blocked and allow it if necessary.
+Update application.properties – Ensure the correct Postgres and MongoDB connection details are set.
