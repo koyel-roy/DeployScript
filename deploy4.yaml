@@ -1,0 +1,393 @@
+- name: Deploy Application on Ubuntu
+  hosts: 10.11.21.6
+  become: yes
+
+  vars:
+    repo_url_ui: "https://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@github.com/Cyberassure-One/Cyberassure-UI.git"
+    repo_url_backend: "https://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@github.com/Cyberassure-One/Data-Model-API.git"
+    local_app_path_ui: "/home/ca/react_app"
+    local_app_path_backend: "/home/ca/data-model-api"
+    remote_host: "10.11.21.6"
+    remote_user: "admin_dev"
+    remote_path_ui: "/var/www/react_app"
+    remote_path_backend: "/opt/DataModelAPI/"
+    jar_file: "./target/data-model-api-0.0.1-SNAPSHOT.jar"
+    credentials_file: "./credentials.json"
+    password: "cyberassure"
+
+  tasks:
+    - name: Update and Upgrade Ubuntu
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Install sshpass (if not already installed)
+      apt:
+        name: sshpass
+        state: present
+
+    - name: Install Maven (for building Java backend)
+      apt:
+        name: maven
+        state: present
+
+    - name: Install Nginx if not already installed
+      apt:
+        name: nginx
+        state: present
+
+    - name: Install Java if not already installed
+      apt:
+        name: default-jre
+        state: present
+
+    - name: Install PostgreSQL if not already installed
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: present
+
+    - name: Find PostgreSQL config path
+      find:
+        paths: "/etc/postgresql/"
+        patterns: "postgresql.conf"
+        recurse: yes
+      register: postgres_conf
+
+    - name: Modify PostgreSQL to listen on all addresses
+      lineinfile:
+        path: "{{ postgres_conf.files[0].path }}"
+        regexp: '^#listen_addresses'
+        line: "listen_addresses = '*'"
+        state: present
+      when: postgres_conf.matched > 0
+
+    - name: Find `pg_hba.conf` path
+      find:
+        paths: "/etc/postgresql/"
+        patterns: "pg_hba.conf"
+        recurse: yes
+      register: pg_hba_conf
+
+    - name: Modify PostgreSQL `pg_hba.conf` to allow remote connections
+      lineinfile:
+        path: "{{ pg_hba_conf.files[0].path }}"
+        line: "host    all    all    0.0.0.0/0    md5"
+        state: present
+      when: pg_hba_conf.matched > 0
+
+    - name: Restart PostgreSQL service
+      service:
+        name: postgresql
+        state: restarted
+
+    - name: Check if MongoDB is installed
+      command: dpkg-query -W -f='${Status}' mongodb-org
+      register: mongodb_installed
+      failed_when: mongodb_installed.rc > 1
+      changed_when: false
+      ignore_errors: true
+
+    - name: Add MongoDB Repository Key
+      apt_key:
+        url: https://www.mongodb.org/static/pgp/server-4.4.asc
+        state: present
+      when: "'install ok installed' not in mongodb_installed.stdout"
+
+    - name: Add MongoDB 4.4 repository
+      apt_repository:
+        repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse"
+        state: present
+        filename: "mongodb-org-4.4"
+      when: "'install ok installed' not in mongodb_installed.stdout"
+
+    - name: Update repository cache after adding MongoDB repository
+      apt:
+        update_cache: yes
+      when: "'install ok installed' not in mongodb_installed.stdout"
+
+    - name: Install MongoDB 4.4 (Meta-Package)
+      apt:
+        name: mongodb-org=4.4.18
+        state: present
+      when: "'install ok installed' not in mongodb_installed.stdout"
+
+    - name: Install Node.js and npm
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        apt-get install -y nodejs
+      args:
+        executable: /bin/bash
+
+    - name: Display Node.js Version
+      command: node -v
+      register: node_version
+      changed_when: false
+
+    - name: Display npm Version
+      command: npm -v
+      register: npm_version
+      changed_when: false
+
+    - name: Show Node.js Version
+      debug:
+        msg: "Node.js Version: {{ node_version.stdout }}"
+
+    - name: Show npm Version
+      debug:
+        msg: "npm Version: {{ npm_version.stdout }}"
+
+    - name: Ensure React app directory exists
+      file:
+        path: "{{ remote_path_ui }}"
+        state: directory
+        mode: '0755'
+        owner: admin_dev
+        group: admin_dev
+
+    - name: Check if React app directory exists
+      stat:
+        path: /var/www/react_app
+      register: react_app_dir
+
+    - name: Create directory for React app if not present
+      file:
+        path: /var/www/react_app
+        state: directory
+        mode: '0755'
+      when: not react_app_dir.stat.exists
+
+    - name: Ensure correct ownership for React app directory
+      file:
+        path: /var/www/react_app
+        owner: admin_dev
+        group: admin_dev
+        recurse: yes
+
+    - name: Ensure correct permissions for React app directory
+      file:
+        path: /var/www/react_app
+        mode: '0755'
+        recurse: yes
+
+    - name: Ensure /opt/DataModelAPI/ directory exists
+      file:
+        path: /opt/DataModelAPI/
+        state: directory
+        owner: admin_dev
+        group: admin_dev
+        mode: '0755'
+
+    - name: Set Up Nginx for React App
+      copy:
+        dest: /etc/nginx/sites-available/react_app
+        content: |
+          server {
+              listen 3000;
+              server_name {{ remote_host }};
+
+              root {{ remote_path_ui }};
+              index index.html;
+
+              location / {
+                  try_files $uri /index.html;
+              }
+
+              location /static/ {
+                  alias {{ remote_path_ui }}/static/;
+              }
+          }
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/react_app
+        dest: /etc/nginx/sites-enabled/react_app
+        state: link
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      register: nginx_test
+      failed_when: nginx_test.rc != 0
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Allow port 3000 through the firewall
+      ufw:
+        rule: allow
+        port: 3000
+        proto: tcp
+
+    - name: Reload UFW firewall
+      ufw:
+        state: reloaded
+
+    - name: Check GitHub connectivity
+      command: ping -c 4 github.com
+      register: ping_test
+      ignore_errors: yes
+
+    - name: Show GitHub connectivity result
+      debug:
+        msg: "{{ ping_test.stdout }}"
+
+    - name: Clone the private GitHub repository for ui build
+      git:
+        repo: "{{ repo_url_ui }}"
+        dest: "{{ local_app_path_ui }}"
+        version: deploy5
+        accept_hostkey: yes
+        force: yes
+
+    - name: List contents of the cloned directory
+      command: ls -la {{ local_app_path_ui }}
+      register: dir_contents
+
+    - name: Show directory contents
+      debug:
+        msg: "{{ dir_contents.stdout }}"
+
+    - name: Install npm dependencies
+      command: npm install
+      args:
+        chdir: "{{ local_app_path_ui }}"
+      environment:
+        CI: "false"
+
+    - name: Build the React application
+      command: npm run build
+      args:
+        chdir: "{{ local_app_path_ui }}"
+
+
+    - name: Transfer built files to the remote server
+      shell: >
+        sshpass -p "{{ password }}" scp -r -o StrictHostKeyChecking=no 
+        -o UserKnownHostsFile=/dev/null 
+        {{ local_app_path_ui }}/build/* "{{ remote_user }}@{{ remote_host }}:{{ remote_path_ui }}"
+
+    
+
+    - name: Restart Nginx if the test is successful
+      service:
+        name: nginx
+        state: restarted
+      when: nginx_test.rc == 0
+
+
+    - name: Add OpenJDK Repository (if required)
+      apt_repository:
+        repo: "ppa:openjdk-r/ppa"
+        state: present
+
+    - name: Update package cache
+      apt:
+        update_cache: yes
+
+    - name: Install OpenJDK 21
+      apt:
+        name: openjdk-21-jdk
+        state: present
+
+    - name: Confirm Java installation
+      command: java -version
+      register: java_version
+      changed_when: false
+
+    - name: Show Java version
+      debug:
+        msg: "{{ java_version.stdout }}"
+
+    - name: Check if port 8081 is blocked by UFW
+      shell: sudo ufw status numbered | grep 8081
+      register: ufw_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Remove UFW rule for port 8081 (if it exists)
+      shell: |
+        if sudo ufw status numbered | grep -q 8081; then
+          sudo ufw delete $(sudo ufw status numbered | grep 8081 | awk -F'[][]' '{print $2}')
+        fi
+      when: ufw_check.rc == 0
+
+    - name: Allow port 8081 through the firewall
+      ufw:
+        rule: allow
+        port: 8081
+        proto: tcp
+
+    - name: Reload UFW firewall
+      ufw:
+        state: reloaded
+
+
+    - name: Clone the private GitHub repository for backend
+      git:
+        repo: "{{ repo_url_backend }}"
+        dest: "{{ local_app_path_backend }}"
+        version: deploy5
+        accept_hostkey: yes
+        force: yes
+
+    - name: List contents of the backend directory
+      command: ls -la {{ local_app_path_backend }}
+      register: backend_dir_contents
+
+    - name: Show backend directory contents
+      debug:
+        msg: "{{ backend_dir_contents.stdout }}"
+
+    - name: Build the backend using Maven
+      command: mvn clean install
+      args:
+        chdir: "{{ local_app_path_backend }}"
+
+    - name: Ensure remote backend directory exists
+      file:
+        path: "{{ remote_path_backend }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ remote_user }}"
+        group: "{{ remote_user }}"
+
+    - name: Transfer JAR file to the remote server
+      shell: >
+        sshpass -p "{{ password }}" scp -o StrictHostKeyChecking=no
+        {{ local_app_path_backend }}/target/data-model-api-0.0.1-SNAPSHOT.jar
+        "{{ remote_user }}@{{ remote_host }}:{{ remote_path_backend }}"
+
+    - name: Transfer credentials.json file to the remote server
+      shell: >
+        sshpass -p "{{ password }}" scp -o StrictHostKeyChecking=no
+        {{ local_app_path_backend }}/credentials.json
+        "{{ remote_user }}@{{ remote_host }}:{{ remote_path_backend }}"
+
+    - name: Stop existing backend service (if running)
+      shell: >
+        sshpass -p "{{ password }}" ssh -o StrictHostKeyChecking=no {{ remote_user }}@{{ remote_host }}
+        "sudo pkill -f 'data-model-api-0.0.1-SNAPSHOT.jar' || true"
+
+    - name: Start backend service
+      shell: >
+        sshpass -p "{{ password }}" ssh -o StrictHostKeyChecking=no {{ remote_user }}@{{ remote_host }}
+        "nohup java -jar {{ remote_path_backend }}/data-model-api-0.0.1-SNAPSHOT.jar > /dev/null 2>&1 &"
+
+    - name: Confirm backend service is running
+      shell: >
+        sshpass -p "{{ password }}" ssh -o StrictHostKeyChecking=no {{ remote_user }}@{{ remote_host }}
+        "ps aux | grep data-model-api-0.0.1-SNAPSHOT.jar | grep -v grep"
+      register: backend_status
+      ignore_errors: yes
+
+    - name: Show backend service status
+      debug:
+        msg: "{{ backend_status.stdout if backend_status.rc == 0 else 'Backend service failed to start' }}"
+
+
+
+
+
