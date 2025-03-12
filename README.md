@@ -1,4 +1,4 @@
-## 📝 **Project Setup Summary**  
+## **Project Setup Summary**  
 
 This project requires some manual configuration steps to ensure proper setup and smooth execution:  
 
