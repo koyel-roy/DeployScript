@@ -2,7 +2,7 @@
 ## 1. Install Ansible and sshpass  
 Ensure that **Ansible** and **sshpass** are installed on your machine:
 
-### ✅ Install Ansible  
+### Install Ansible  
 ```bash
 sudo apt update
 sudo apt install ansible -y
