@@ -1,4 +1,11 @@
 ## Project Deployment Guide
+## 1. Install Ansible and sshpass  
+Ensure that **Ansible** and **sshpass** are installed on your machine:
+
+### ✅ Install Ansible  
+```bash
+sudo apt update
+sudo apt install ansible -y
 
 ### 1. Ansible Ping Test
 To verify Ansible connectivity with the target server, run the following command:
