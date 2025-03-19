@@ -28,6 +28,7 @@ ANSIBLE_HOST_KEY_CHECKING=False ansible -i inventory.ini 10.11.21.88 -m ping
 Transfer the following files from your local machine to the remote server using **WinSCP**:
 - `inventory.ini`
 - `deploy.yaml`
+- Make sure that the personal access token in the ui and backend repositories are valid and not revoked. 
 
 ### 3. Running Ansible Playbook
 Run the following command to execute the deployment playbook:
