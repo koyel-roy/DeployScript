@@ -7,6 +7,11 @@ Ensure that **Ansible** and **sshpass** are installed on your machine:
 sudo apt update
 sudo apt install ansible -y
 
+### Install SSH pass
+```bash
+sudo apt install sshpass -y
+
+
 ### 1. Ansible Ping Test
 To verify Ansible connectivity with the target server, run the following command:
 
